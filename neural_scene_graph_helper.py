@@ -23,34 +23,47 @@ def latentReg(z, reg): return tf.reduce_sum([1/reg * tf.norm(latent_i) for laten
 class Embedder:
 
     def __init__(self, **kwargs):
-
+        # 保存参数
         self.kwargs = kwargs
+        # 建立全连接
         self.create_embedding_fn()
 
     def create_embedding_fn(self):
-
+        # 所有层的列表
         embed_fns = []
+        # 输入维数
         d = self.kwargs['input_dims']
         out_dim = 0
+        # 如果包含输入
         if self.kwargs['include_input']:
+            # 添加一个f(x)=x
             embed_fns.append(lambda x: x)
+            # 输出维数加d
             out_dim += d
 
         max_freq = self.kwargs['max_freq_log2']
         N_freqs = self.kwargs['num_freqs']
-
+        ###############################################
+        ## 位置编码相关
+        # 如果采用log采样
         if self.kwargs['log_sampling']:
+            # 采样点为2^([0,1,2,3.....])
             freq_bands = 2.**tf.linspace(0., max_freq, N_freqs)
         else:
+            # 采样点为[1,....,2^max_freq],共N_freqs个数
             freq_bands = tf.linspace(2.**0., 2.**max_freq, N_freqs)
 
         for freq in freq_bands:
+            # sin/cos
             for p_fn in self.kwargs['periodic_fns']:
+                # f(x, p_fn=p_fn, freq=freq)=p_fn(x * freq)
                 embed_fns.append(lambda x, p_fn=p_fn,
                                  freq=freq: p_fn(x * freq))
+                # 每增加一个cos/sin，输出就多宽d
                 out_dim += d
-
+        # embedding各层
         self.embed_fns = embed_fns
+        # 输出维数
         self.out_dim = out_dim
 
     def embed(self, inputs):
@@ -58,10 +71,13 @@ class Embedder:
 
 
 def get_embedder(multires, i=0, input_dims=3):
+    """
+        获取位置编码器
+    """
 
     if i == -1:
         return tf.identity, input_dims
-
+    # embed层配置参数
     embed_kwargs = {
         'include_input': True,
         'input_dims': input_dims,
@@ -70,18 +86,21 @@ def get_embedder(multires, i=0, input_dims=3):
         'log_sampling': True,
         'periodic_fns': [tf.math.sin, tf.math.cos],
     }
-
+    # 创建embedder
     embedder_obj = Embedder(**embed_kwargs)
+    # 定义一个函数，输入x，传入位置编码器，返回位置编码
     def embed(x, eo=embedder_obj): return eo.embed(x)
+    # 返回上个函数以及输出的维数
     return embed, embedder_obj.out_dim
 
 
 # Model architecture
 def init_nerf_model(D=8, W=256, input_ch=3, input_ch_color_head=3, output_ch=4, skips=[4], use_viewdirs=False, trainable=True):
-
+    # relu层
     relu = tf.keras.layers.ReLU()
+    # Dense with relu
     def dense(W, act=relu): return tf.keras.layers.Dense(W, activation=act)
-
+    
     print('MODEL', input_ch, input_ch_color_head, type(
         input_ch), type(input_ch_color_head), use_viewdirs)
     input_ch = int(input_ch)

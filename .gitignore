@@ -22,3 +22,4 @@ axcana.egg-info
 *.gz
 *.avi
 /example_weights/
+/data

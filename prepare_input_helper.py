@@ -31,8 +31,11 @@ def extract_object_information(args, visible_objects, objects_meta):
         obj_state = visible_objects[:, :, [7, 8, 9, 2, -1]]
         obj_dir = visible_objects[:, :, 10][..., None]
         sh = obj_state.shape
+    # 如果是kitti数据集
     elif args.dataset_type == 'kitti':
+        # 取出可视化物体数据的部分信息
         obj_state = visible_objects[:, :, [7, 8, 9, 2, 3]]
+        # [frame_id, cam, np.array([obj_id]), obj_type, dim, pose_3d]
         obj_dir = visible_objects[:, :, 10][..., None]
         sh = obj_state.shape
 

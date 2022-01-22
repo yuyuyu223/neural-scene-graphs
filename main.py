@@ -840,37 +840,50 @@ def render_path(render_poses, hwf, chunk, render_kwargs, obj=None, obj_meta=None
 
 def create_nerf(args):
     """Instantiate NeRF's MLP model."""
+    """
+        NeRF多层感知机的实现
+    """
+    # 如果是物体检测任务，关闭训练
     if args.obj_detection:
         trainable = False
     else:
         trainable = True
-
+    # 根据位置编码设置，生成embed层和输入维数
     embed_fn, input_ch = get_embedder(args.multires, args.i_embed)
-
+    # 如果加入时序信息，输入多一个通道
     if args.use_time:
         input_ch += 1
 
     input_ch_views = 0
     embeddirs_fn = None
+    # 如果使用光线方向
     if args.use_viewdirs:
+        # multires_views=4：2D的方向每个都sin/cos，
         embeddirs_fn, input_ch_views = get_embedder(
             args.multires_views, args.i_embed)
     output_ch = 4
     skips = [4]
+    # 初始化nerf模型
     model = init_nerf_model(
         D=args.netdepth, W=args.netwidth,
         input_ch=input_ch, output_ch=output_ch, skips=skips,
         input_ch_color_head=input_ch_views, use_viewdirs=args.use_viewdirs, trainable=trainable)
+    # 可训练参数
     grad_vars = model.trainable_variables
+    # 模型信息
     models = {'model': model}
 
     model_fine = None
+    # 沿着一条光线更多次采样
     if args.N_importance > 0:
+        # 建立fine网络
         model_fine = init_nerf_model(
             D=args.netdepth_fine, W=args.netwidth_fine,
             input_ch=input_ch, output_ch=output_ch, skips=skips,
             input_ch_color_head=input_ch_views, use_viewdirs=args.use_viewdirs, trainable=trainable)
+        # 添加训练参数
         grad_vars += model_fine.trainable_variables
+        # 模型信息
         models['model_fine'] = model_fine
 
     models_dynamic_dict = None
@@ -1047,7 +1060,9 @@ def create_nerf(args):
 
 
 def config_parser():
-
+    """
+        命令行参数
+    """
     import configargparse
     parser = configargparse.ArgumentParser()
     parser.add_argument('--config', is_config_file=True,
@@ -1174,9 +1189,9 @@ def config_parser():
                         help='will take every 1/N images as LLFF test set, paper uses 8')
 
     # vkitti/kitti flags
-    parser.add_argument("--first_frame", type=str, default=0,
+    parser.add_argument("--first_frame", type=str, default="0",
                         help='specifies the beginning of a sequence if not the complete scene is taken as Input')
-    parser.add_argument("--last_frame", type=str, default=None,
+    parser.add_argument("--last_frame", type=str, default="1",
                         help='specifies the end of a sequence')
     parser.add_argument("--use_object_properties", action='store_true',
                         help='use pose and properties of visible objects as an Input')
@@ -1223,15 +1238,17 @@ def config_parser():
 
 
 def train():
-
+    # 命令行参数
     parser = config_parser()
+    # 获取参数字典
     args = parser.parse_args()
-    
+    # 如果输入了随机种子
     if args.random_seed is not None:
         print('Fixing random seed', args.random_seed)
+        # numpy和tensorflow都要初始化随机种子
         np.random.seed(args.random_seed)
         tf.compat.v1.set_random_seed(args.random_seed)
-
+    # 仅渲染物体/仅渲染背景
     if args.obj_only and args.bckg_only:
         print('Object and background can not set as train only at the same time.')
         return
@@ -1241,19 +1258,24 @@ def train():
         args.use_object_properties = True
 
     # Support first and last frame int
+    # 获取开始结束帧组
     starts = args.first_frame.split(',')
     ends = args.last_frame.split(',')
+    # 开始结束帧个数必须匹配
     if len(starts) != len(ends):
+        # 不匹配只取组的首帧
         print('Number of sequences is not defined. Using the first sequence')
         args.first_frame = int(starts[0])
         args.last_frame = int(ends[0])
     else:
+        # 列表化
         args.first_frame = [int(val) for val in starts]
         args.last_frame = [int(val) for val in ends]
-
+    # 如果是kitti数据集
     if args.dataset_type == 'kitti':
         # tracking2txt('../../CenterTrack/results/default_0006_results.json')
-
+        # 读取kitti数据集
+        # # 返回图片集，双目姿态，单目姿态，图片长宽和焦点，数据集的划分，双目可视物体，所有物体的信息，单目可视物体，None，None，None，None
         images, poses, render_poses, hwf, i_split, visible_objects, objects_meta, render_objects, bboxes, \
         kitti_obj_metadata, time_stamp, render_time_stamp = \
             load_kitti_data(args.datadir,
@@ -1267,21 +1289,22 @@ def train():
               #render_poses.shape,
               hwf,
               args.datadir)
-
+        # 根据可视物体数来界定物体数目最大输入
         if visible_objects is not None:
             args.max_input_objects = visible_objects.shape[1]
         else:
             args.max_input_objects = 0
-
+        # 如果开启仅渲染
         if args.render_only:
             visible_objects = render_objects
-
+        # 划分数据集
         i_train, i_val, i_test = i_split
-
+        # 远近平面
         near = args.near_plane
         far = args.far_plane
 
         # Fix all persons at one position
+        # 不固定行人
         fix_ped_pose = False
         if fix_ped_pose:
             print('Pedestrians are fixed!')
@@ -1332,9 +1355,10 @@ def train():
         # colmap_poses = np.reshape(colmap_poses, [-1,15])
         # colmap_poses = np.concatenate([colmap_poses, np.repeat(np.array([near, far])[None], len(poses), axis=0)], axis=1)
         # np.save(os.path.join(args.basedir, args.expname) +'/poses_bounds.npy', colmap_poses)
-
+    # 如果数据是vkitti
     elif args.dataset_type == 'vkitti':
         # TODO: Class by integer instead of hot-one-encoding for latent encoding in visible object
+        # 返回图片集，双目姿态，单目姿态，图片长宽和焦点，数据集的划分，双目可视物体，所有物体的信息，单目可视物体，None，None，None，None
         images, instance_segm, poses, frame_id, render_poses, hwf, i_split, visible_objects, objects_meta, render_objects, bboxes = \
             load_vkitti_data(args.datadir,
                              selected_frames=[args.first_frame[0], args.last_frame[0]] if args.last_frame[0] >= 0 else -1,
@@ -1355,22 +1379,24 @@ def train():
 
         near = args.near_plane
         far = args.far_plane
-
+    # 其他数据集不支持
     else:
         print('Unknown dataset type', args.dataset_type, 'exiting')
         return
 
     # Ploting Options for Debugging the Scene Graph
+    # 关闭绘制姿态
     plot_poses = False
     if args.debug_local and plot_poses:
         plot_kitti_poses(args, poses, visible_objects)
 
     # Cast intrinsics to right types
+    # 重整hwf数据类型
     np.linalg.norm(poses[:1, [0, 2], 3] - poses[1:, [0, 2], 3])
     H, W, focal = hwf
     H, W = int(H), int(W)
     hwf = [H, W, focal]
-
+    # 测试集姿态
     if args.render_test:
         render_poses = np.array(poses[i_test])
 
@@ -1400,20 +1426,28 @@ def train():
             render_objects = obj_nodes[i_test]
 
     # Create log dir and copy the config file
+    # log——实验名称和存放位置
     basedir = args.basedir
     expname = args.expname
+    # 不存在log文件夹就创建
     os.makedirs(os.path.join(basedir, expname), exist_ok=True)
+    # 写入log
     f = os.path.join(basedir, expname, 'args.txt')
     with open(f, 'w') as file:
+        # 将arg参数写下来
         for arg in sorted(vars(args)):
             attr = getattr(args, arg)
             file.write('{} = {}\n'.format(arg, attr))
+    # 如果config文件不为空
     if args.config is not None:
+        # 打开配置文件
         f = os.path.join(basedir, expname, 'config.txt')
+        # 把配置文件拷贝一份到log
         with open(f, 'w') as file:
             file.write(open(args.config, 'r').read())
 
     # Create nerf representation models
+    # 创建NeRF模型
     render_kwargs_train, render_kwargs_test, start, grad_vars, models, latent_encodings, weights_path = create_nerf(
         args)
 
