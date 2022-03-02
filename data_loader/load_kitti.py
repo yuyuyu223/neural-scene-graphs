@@ -808,54 +808,6 @@ def load_kitti_data(basedir, selected_frames=None, use_obj=True, row_id=False, r
             poses_ls.append(poses)
             visible_objects_ls.append(visible_objects)
             objects_meta_ls.append(objects_meta)
-
-    # Debug Velo to IMU poses
-    # plt.figure()
-    # plt.axis('equal')
-    # plt.scatter(poses_imu_w[:, 0, 3], poses_imu_w[:, 1, 3], color='orange')
-    # plt.scatter(poses_velo_w[:, 0, 3], poses_velo_w[:, 1, 3], color='black')
-
-    # Debug object poses
-    # t_obj = np.reshape(visible_objects[:, :, [7, 8, 9]], [-1, 3])
-    # yaw_obj = np.reshape(visible_objects[:, :, [10]], [-1, 1])
-    # plt.scatter(t_obj[:, 0], t_obj[:, 1], color='green')
-    # for i in range(len(yaw_obj)):
-    #     obj_axis = np.matmul(get_rotation(0, 0, -yaw_obj[i][0]), np.eye(3)*3)
-    #     plt.arrow(t_obj[i, 0], t_obj[i, 1], obj_axis[0, 0], obj_axis[1, 0], color='black')
-    #     plt.arrow(t_obj[i, 0], t_obj[i, 1], obj_axis[0, 1], obj_axis[1, 1], color='red')
-
-    # poses_velo_w_kitti = np.array(poses_velo_w)
-    # poses_velo_w = np.matmul(kitti2vkitti, poses_velo_w)
-
-    # x_plt = 0
-    # y_plt = 1
-    # plt.scatter(poses[:, x_plt, 3], poses[:, y_plt, 3], color='blue')
-    # plt.axis('equal')
-    # for plt_no in range(poses.shape[0]):
-    #     plt.arrow(poses[plt_no, x_plt, 3], poses[plt_no, y_plt, 3], poses[plt_no, x_plt, 0], poses[plt_no, y_plt, 0], color='green')
-    #     plt.arrow(poses[plt_no, x_plt, 3], poses[plt_no, y_plt, 3], poses[plt_no, x_plt, 1], poses[plt_no, y_plt, 1])
-    #     plt.arrow(poses[plt_no, x_plt, 3], poses[plt_no, y_plt, 3], poses[plt_no, x_plt, 2], poses[plt_no, y_plt, 2], color='red')
-
-    # plt.figure()
-    # plt.scatter(-cam_poses[0, 1, 3], cam_poses[0, 2, 3], color='green')
-    # plt.scatter(-cam_poses[1, 1, 3], cam_poses[1, 2, 3], color='red')
-    # plt.scatter(-poses_velo_w[selected_frames[0], 1, 3], poses_velo_w[selected_frames[0], 2, 3], color='black')
-    # plt.scatter(-poses_imu_w[selected_frames[0], 1, 3], poses_imu_w[selected_frames[0], 2, 3], color='orange')
-    # plt.axis('equal')
-
-
-    # x_plt = 0
-    # y_plt = 2
-    # plt.scatter(poses[:, x_plt, 3], poses[:, y_plt, 3], color='cyan')
-    # for plt_no in range(poses.shape[0]):
-    #     plt.arrow(poses[plt_no, x_plt, 3], poses[plt_no, y_plt, 3], poses[plt_no, x_plt, 0], poses[plt_no, y_plt, 0],
-    #               color='black')
-    #     plt.arrow(poses[plt_no, x_plt, 3], poses[plt_no, y_plt, 3], poses[plt_no, x_plt, 1], poses[plt_no, y_plt, 1])
-    #     plt.arrow(poses[plt_no, x_plt, 3], poses[plt_no, y_plt, 3], poses[plt_no, x_plt, 2], poses[plt_no, y_plt, 2],
-    #               color='blue')
-
-    # visible_objects = visible_objects_tracking
-    # objects_meta = objects_meta_tracking
     
     images = np.concatenate(images_ls)
     poses = np.concatenate(poses_ls)
@@ -1003,51 +955,6 @@ centertrack_type_map = {1: 'Car',
                         9: 'DontCare', #'traffic_cone': 9,
                         10: 'DontCare', #'barrier': 10
                         }
-
-
-def tracking2txt(file):
-    """
-    Helper to convert json outputs of tracking algorithms to text files for scene graphs
-    :param file: Json File
-    :return:
-    """
-    # tst = True
-    labels = []
-    kitti2tracking = centertrack_map
-    tracking2kitticlass = centertrack_type_map
-
-    with open(file) as json_file:
-        data = json.load(json_file)
-        for i, frame_data in enumerate(data.values()):
-            frame_objs = []
-            for obj_data in frame_data:
-                obj = [i]
-                for kitti_val, tracked_val in kitti2tracking.items():
-                    if not kitti_val == 'obj_type':
-                        if isinstance(tracked_val, str):
-                            obj.append(obj_data[tracked_val])
-                        else:
-                            obj.append(tracked_val)
-                    else:
-                        obj.append(tracking2kitticlass[obj_data[tracked_val]])
-
-                frame_objs.append(obj)
-
-            labels.append(frame_objs)
-
-    with open('test_file.txt', 'w') as file:
-        for frame in labels:
-            for obj in frame:
-                for attr in obj:
-                    if isinstance(attr, list) > 1:
-                        for sub_attr in attr:
-                            file.write(str(sub_attr) + " ")
-                    else:
-                        file.write(str(attr)+ " ")
-                file.write('\n')
-
-        file.close()
-
 
 def plot_kitti_poses(args, poses, visible_objects):
     """

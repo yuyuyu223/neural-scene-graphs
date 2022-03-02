@@ -44,9 +44,9 @@ def extract_object_information(args, visible_objects, objects_meta):
 
 
     # [n_frames, n_max_obj]
-    # obj_id
+    # [frame*cam, n_obj_max, obj_id]
     obj_track_id = obj_state[..., 3][..., None]
-    # obj_type
+    # [frame*cam, n_obj_max, obj_type]
     obj_class_id = obj_state[..., 4][..., None]
     # objects_meta: obj_id,[物体id，l，h，w，类别id]
     # Change track_id to row in list(objects_meta)
@@ -63,6 +63,7 @@ def extract_object_information(args, visible_objects, objects_meta):
     track_row = np.zeros_like(obj_track_id)
 
     scene_objects = []
+    # 类别id
     scene_classes = list(np.unique(np.array(obj_meta_ls)[..., 4]))
     for i, frame_objects in enumerate(obj_track_id):
         for j, camera_objects in enumerate(frame_objects):
@@ -70,9 +71,9 @@ def extract_object_information(args, visible_objects, objects_meta):
             if camera_objects >= 0 and not camera_objects in scene_objects:
                 print(camera_objects, 'in this scene')
                 scene_objects.append(camera_objects)
-    # [cam, n_obj, [x,y,z,track_id, class_id], obj_dir, track_row]
+    # [frame*cam, n_obj, [tx, ty, tz, raw, track_row]
     obj_properties = np.concatenate([obj_state[..., :3], obj_dir, track_row], axis=2)
-
+    # 对齐为3的倍数
     if obj_properties.shape[-1] % 3 > 0:
         if obj_properties.shape[-1] % 3 == 1:
             obj_properties = np.concatenate([obj_properties, np.zeros([sh[0], sh[1], 2])], axis=2)
@@ -80,7 +81,7 @@ def extract_object_information(args, visible_objects, objects_meta):
             obj_properties = np.concatenate([obj_properties, np.zeros([sh[0], sh[1], 1])], axis=2)
 
     add_input_rows = int(obj_properties.shape[-1] / 3)
-
+    # 缩放
     obj_meta_ls = [obj * np.array([1., args.box_scale, 1., args.box_scale, 1.])
                    if obj[4] != 4 else obj * np.array([1., 1.2, 1., 1.2, 1.])
                    for obj in obj_meta_ls]

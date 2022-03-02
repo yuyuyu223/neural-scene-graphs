@@ -5,7 +5,7 @@ os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 
 from neural_scene_graph_helper import *
 from data_loader.load_vkitti import load_vkitti_data
-from data_loader.load_kitti import load_kitti_data, plot_kitti_poses, tracking2txt
+from data_loader.load_kitti import load_kitti_data, plot_kitti_poses
 from prepare_input_helper import *
 from neural_scene_graph_manipulation import *
 
@@ -14,6 +14,7 @@ import tensorflow as tf
 import matplotlib.pyplot as plt
 import imageio
 import cv2
+from config.utils import read_config
 
 tf.compat.v1.enable_eager_execution()
 
@@ -1309,6 +1310,8 @@ def train():
     parser = config_parser()
     # 获取参数字典
     args = parser.parse_args()
+    # 读取config文件
+    args = read_config(args)
     # 如果输入了随机种子
     if args.random_seed is not None:
         print('Fixing random seed', args.random_seed)
@@ -1326,6 +1329,8 @@ def train():
 
     # Support first and last frame int
     # 获取开始结束帧组
+    args.first_frame = str(args.first_frame)
+    args.last_frame = str(args.last_frame)
     starts = args.first_frame.split(',')
     ends = args.last_frame.split(',')
     # 开始结束帧个数必须匹配
@@ -1380,49 +1385,7 @@ def train():
             visible_objects[np.where(visible_objects[..., 3] == 4)] -= ped_poses
             visible_objects[np.where(visible_objects[..., 3] == 4)] += ped_poses[20]
 
-        # Get SRN Poses, Images and Poses
-        # work_dir = os.path.dirname(os.path.abspath(args.basedir))
-        # srn_data_dir = os.path.join(work_dir, 'srn_data_' + args.expname)
-        # srn_data_dir_train = srn_data_dir+'_train'
-        # srn_data_dir_val = srn_data_dir + '_train_val'
-        # if not os.path.exists(srn_data_dir_train):
-        #     os.makedirs(srn_data_dir_train)
-        #     os.makedirs(srn_data_dir_val)
-        #     for dir in ['rgb', 'pose', 'intrinsics']:
-        #         os.makedirs(os.path.join(srn_data_dir_train, dir))
-        #         os.makedirs(os.path.join(srn_data_dir_val, dir))
-        #
-        # f = hwf[2]
-        # c_x = hwf[1]/2.
-        # c_y = hwf[0]/2.
-        # id_val = 0
-        #
-        # for i, img in enumerate(images):
-        #     frame_id = str(i).zfill(5)
-        #     im = Image.fromarray((img*255).astype(np.uint8))
-        #     im.save(os.path.join(srn_data_dir_train, 'rgb/'+frame_id+'.png'))
-        #     np.savetxt(os.path.join(srn_data_dir_train, 'pose/' + frame_id + '.txt'),
-        #                np.reshape(poses[i], [-1])[None], fmt='%.16f')
-        #     np.savetxt(os.path.join(srn_data_dir_train, 'intrinsics/' + frame_id + '.txt'),
-        #                np.array([f, 0.0, c_x, 0.0, f, c_y, 0.0, 0.0, 1.0], np.float32)[None], fmt='%.1f')
-        #     if not i % 10:
-        #         frame_id_val = str(id_val).zfill(5)
-        #         im.save(os.path.join(srn_data_dir_val, 'rgb/' + frame_id_val + '.png'))
-        #         np.savetxt(os.path.join(srn_data_dir_val, 'pose/' + frame_id_val + '.txt'),
-        #                    np.reshape(poses[i], [-1])[None], fmt='%.16f')
-        #         np.savetxt(os.path.join(srn_data_dir_val, 'intrinsics/' + frame_id_val + '.txt'),
-        #                    np.array([f, 0.0, c_x, 0.0, f, c_y, 0.0, 0.0, 1.0], np.float32)[None], fmt='%.1f')
-        #         id_val += 1
-        #
-        # print('Stored Image set for SRNs')
 
-
-        # Get COLMAP formated poses
-        # colmap_poses = poses[:, :3, :]
-        # colmap_poses = np.concatenate([colmap_poses, np.repeat(np.array(hwf)[None], len(poses), axis=0)[..., None]], axis=2)
-        # colmap_poses = np.reshape(colmap_poses, [-1,15])
-        # colmap_poses = np.concatenate([colmap_poses, np.repeat(np.array([near, far])[None], len(poses), axis=0)], axis=1)
-        # np.save(os.path.join(args.basedir, args.expname) +'/poses_bounds.npy', colmap_poses)
     # 如果数据是vkitti
     elif args.dataset_type == 'vkitti':
         # TODO: Class by integer instead of hot-one-encoding for latent encoding in visible object
@@ -1471,9 +1434,10 @@ def train():
     # Extract objects positions and labels
     # 生成obj信息
     if args.use_object_properties or args.bckg_only:
+        # obj_nodes: [frame*cam, n_obj, [tx, ty, tz, raw, track_row]]
+        # objects_meta: obj_id,[物体id，l，h，w，类别id]
         obj_nodes, add_input_rows, obj_meta_ls, scene_objects, scene_classes = \
             extract_object_information(args, visible_objects, objects_meta)
-
         # obj_track_id_list = False if args.single_obj == None else [args.single_obj] #[4., 9.,, 3.] # [9.]
         # 如果单物体, 就把单物体作为列表当作唯一场景物体
         if args.single_obj is not None:
