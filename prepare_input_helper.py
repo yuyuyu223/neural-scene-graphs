@@ -19,6 +19,7 @@ def extract_object_information(args, visible_objects, objects_meta):
         add_input_rows: additional input rows to the network
     '''
     if args.dataset_type == 'vkitti':
+        # visible_objects: 帧数*相机数，最大物体数 [帧号、相机号、物体类别号、物体类别、长宽高、物体姿态]
         # [n_frames, n_max_obj, xyz+track_id+ismoving+0]
         obj_state = visible_objects[:, :, [7, 8, 9, 2, -1]]
 
@@ -34,23 +35,28 @@ def extract_object_information(args, visible_objects, objects_meta):
     # 如果是kitti数据集
     elif args.dataset_type == 'kitti':
         # 取出可视化物体数据的部分信息
+        # obj_state: [frame*cam, n_obj_max, [t_x, t_y, t_z, obj_id, obj_type]]
         obj_state = visible_objects[:, :, [7, 8, 9, 2, 3]]
-        # [frame_id, cam, np.array([obj_id]), obj_type, dim, pose_3d]
+        # 14个数：[frame_id, cam, np.array([obj_id]), obj_type, dim, pose_3d(t_x,t_y,t_z,raw,0,0,is_moving)]
+        # obj的raw角 [frame*cam, n_obj_max, raw]
         obj_dir = visible_objects[:, :, 10][..., None]
         sh = obj_state.shape
 
-    # obj_state: [cam, n_obj, [x,y,z,track_id, class_id]]
-
 
     # [n_frames, n_max_obj]
+    # obj_id
     obj_track_id = obj_state[..., 3][..., None]
+    # obj_type
     obj_class_id = obj_state[..., 4][..., None]
+    # objects_meta: obj_id,[物体id，l，h，w，类别id]
     # Change track_id to row in list(objects_meta)
     obj_meta_ls = list(objects_meta.values())
     # Add first row for no objects
+    # 添加一行无物体的信息
     obj_meta_ls.insert(0, np.zeros_like(obj_meta_ls[0]))
     obj_meta_ls[0][0] = -1
     # Build array describing the relation between metadata IDs and where its located
+    # erow_id-obj_id
     row_to_track_id = np.concatenate([np.linspace(0, len(objects_meta.values()), len(objects_meta.values())+1)[:,None],
                                       np.array(obj_meta_ls)[:,0][:,None]], axis=1).astype(np.int32)
     # [n_frames, n_max_obj]
@@ -64,7 +70,7 @@ def extract_object_information(args, visible_objects, objects_meta):
             if camera_objects >= 0 and not camera_objects in scene_objects:
                 print(camera_objects, 'in this scene')
                 scene_objects.append(camera_objects)
-
+    # [cam, n_obj, [x,y,z,track_id, class_id], obj_dir, track_row]
     obj_properties = np.concatenate([obj_state[..., :3], obj_dir, track_row], axis=2)
 
     if obj_properties.shape[-1] % 3 > 0:
