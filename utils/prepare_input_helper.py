@@ -2,7 +2,7 @@ import time
 import os
 import numpy as np
 import tensorflow as tf
-from neural_scene_graph_helper import box_pts
+from utils.neural_scene_graph_helper import box_pts
 
 
 def extract_object_information(args, visible_objects, objects_meta):

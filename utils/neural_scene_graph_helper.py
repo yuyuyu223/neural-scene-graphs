@@ -103,22 +103,42 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_color_head=3, output_ch=4, 
     
     print('MODEL', input_ch, input_ch_color_head, type(
         input_ch), type(input_ch_color_head), use_viewdirs)
+    # xyz+time
     input_ch = int(input_ch)
+    # viewdirs
     input_ch_color_head = int(input_ch_color_head)
-
+    # 输入层：xyz+time+viewdirs
     inputs = tf.keras.Input(shape=(input_ch + input_ch_color_head))
+    # 输入层划分开
     inputs_pts, inputs_color_head = tf.split(inputs, [input_ch, input_ch_color_head], -1)
     inputs_pts.set_shape([None, input_ch])
     inputs_color_head.set_shape([None, input_ch_color_head])
 
     print(inputs.shape, inputs_pts.shape, inputs_color_head.shape)
     outputs = inputs_pts
+    # 根据配置的网络深度，生成MLP
     for i in range(D):
         outputs = dense(W)(outputs)
         if i in skips:
             outputs = tf.concat([inputs_pts, outputs], -1)
-
+    # 如果使用viewdirs
     if use_viewdirs:
+        """
+                  MLP
+                   |
+           dense1------dense256
+             |             |
+           alpha       bottleneck + inputs_color_head(viewdirs) 
+             |                          |
+             |                       dense x4
+             |                          |
+             |                       dense3
+             |                          |
+             |                        color
+             ---------------------------|
+                                      output
+        """
+        # alpha直接dense输出
         alpha_out = dense(1, act=None)(outputs)
         bottleneck = dense(256, act=None)(outputs)
         inputs_viewdirs = tf.concat(
@@ -131,10 +151,11 @@ def init_nerf_model(D=8, W=256, input_ch=3, input_ch_color_head=3, output_ch=4, 
 
         outputs = tf.concat([outputs, alpha_out], -1)
     else:
+        # 直接output 4维 alpha+rgb
         outputs = dense(output_ch, act=None)(outputs)
-
+    # 组合模型
     model = tf.keras.Model(inputs=inputs, outputs=outputs)
-
+    # 关闭训练模式
     if trainable == False:
         for layer in model.layers:
             layer.trainable = False
