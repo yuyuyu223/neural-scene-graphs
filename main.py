@@ -17,7 +17,6 @@ from models.Render import *
 
 tf.compat.v1.enable_eager_execution()
 
-
 def train():
     # 命令行参数
     parser = config_parser()
@@ -230,8 +229,10 @@ def train():
     render_kwargs_test.update(bds_dict)
 
     # Short circuit if np.argwhere(n[:1,:,0]>0)only rendering out from trained model
+    # 仅渲染
     if args.render_only:
         print('RENDER ONLY')
+        # 渲染测试
         if args.render_test:
             # render_test switches to test poses
             images = images[i_test]
@@ -268,13 +269,15 @@ def train():
 
         return
 
-    # Create optimizer
+    # 学习率
     lrate = args.lrate
+    # 学习率递减
     if args.lrate_decay > 0:
         lrate = tf.keras.optimizers.schedules.ExponentialDecay(lrate,
                                                                decay_steps=args.lrate_decay * 1000, decay_rate=0.1)
+    # 优化器
     optimizer = tf.keras.optimizers.Adam(lrate)
-
+    # 存起来
     models['optimizer'] = optimizer
 
     global_step = tf.compat.v1.train.get_or_create_global_step()
@@ -292,31 +295,35 @@ def train():
     print('get rays')
     # get_rays_np() returns rays_origin=[H, W, 3], rays_direction=[H, W, 3]
     # for each pixel in the image. This stack() adds a new dimension.
-    rays = [get_rays_np(H, W, focal, p) for p in poses[:, :3, :4]]
+    # 世界坐标下的光线
+    rays = [get_rays_np(H, W, focal, p) for p in poses[:, :3, :4]] # N个 [ro+rd, H, W, 3]
     rays = np.stack(rays, axis=0)  # [N, ro+rd, H, W, 3]
     print('done, concats')
     # [N, ro+rd+rgb, H, W, 3]
     rays_rgb = np.concatenate([rays, images[:, None, ...]], 1)
-
+    # 不使用obj信息
     if not args.use_object_properties:
         # [N, H, W, ro+rd+rgb, 3]
         rays_rgb = np.transpose(rays_rgb, [0, 2, 3, 1, 4])
+        # 取出训练需要的光线和rgb
         rays_rgb = np.stack([rays_rgb[i]
                              for i in i_train], axis=0)  # train images only
         # [(N-1)*H*W, ro+rd+rgb, 3]
         rays_rgb = np.reshape(rays_rgb, [-1, 3, 3])
         rays_rgb = rays_rgb.astype(np.float32)
+        # 使用时间
         if args.use_time:
             time_stamp_train = np.stack([time_stamp[i]
                                    for i in i_train], axis=0)
             time_stamp_train = np.repeat(time_stamp_train[:, None, :], H*W, axis=0).astype(np.float32)
             rays_rgb = np.concatenate([rays_rgb, time_stamp_train], axis=1)
-
+    # 使用obj信息
     else:
         print("adding object nodes to each ray")
+        # 背景的光线RGB
         rays_rgb_env = rays_rgb
         input_size = 0
-
+        # [N, max_obj*cam_num, H, W, 3]
         obj_nodes = np.repeat(obj_nodes[:, :, np.newaxis, ...], W, axis=2)
         obj_nodes = np.repeat(obj_nodes[:, :, np.newaxis, ...], H, axis=2)
 
@@ -340,7 +347,7 @@ def train():
         if (args.bckg_only or args.obj_only or args.model_library is not None or args.use_object_properties): #and not args.debug_local:
             bboxes = None
             print(rays_rgb.shape)
-
+            # 如果使用分割
             if args.use_inst_segm:
                 # Ray selection from segmentation (early experiments)
                 print('Using segmentation map')
@@ -360,14 +367,16 @@ def train():
             else:
                 # Preferred option
                 print('Using Ray Object Node intersections')
+                # 获取在物体上的光线
                 rays_on_obj, rays_to_remove = get_all_ray_3dbox_intersection(rays_rgb, obj_meta_tensor,
                                                                              args.netchunk, local=args.debug_local,
                                                                              obj_to_remove=args.remove_obj)
 
             # Create Masks for background and objects to subsample the training batches
+            # 生成物体mask
             obj_mask = np.zeros(len(rays_rgb), np.bool)
             obj_mask[rays_on_obj] = 1
-
+            # 生成背景mask
             bckg_mask = np.ones(len(rays_rgb), np.bool)
             bckg_mask[rays_on_obj] = 0
 
@@ -396,21 +405,26 @@ def train():
                     img_sample = np.reshape(rays_rgb_debug[(H * W) * i_smplimg:(H * W) * (i_smplimg + 1), 2, :],
                                             [H, W, 3])
                     plt.imshow(img_sample)
-
+            # 如果仅训练背景
             if args.bckg_only:
                 print('Removing objects from scene.')
+                # 通过背景mask截取需要的光线和rgb
                 rays_rgb = rays_rgb[bckg_mask]
                 print(rays_rgb.shape)
+            # 仅训练obj
             elif args.obj_only and args.model_library is None or args.debug_local:
                 print('Extracting objects from background.')
                 rays_bckg = None
+                # 通过obj mask截取需要的光线
                 rays_rgb = rays_rgb[obj_mask]
                 print(rays_rgb.shape)
+            # 各取所需
             else:
                 rays_bckg = rays_rgb[bckg_mask]
                 rays_rgb = rays_rgb[obj_mask]
 
             # Get Intersections per object and additional rays to have similar rays/object distributions VVVVV
+            # 渲染obj需要多采样一些光线
             if not args.bckg_only:
                 # # print(rays_rgb.shape)
                 rays_rgb = resample_rays(rays_rgb, rays_bckg, obj_meta_tensor, objects_meta,
@@ -418,11 +432,13 @@ def train():
             # Get Intersections per object and additional rays to have similar rays/object distributions AAAAA
 
     print('shuffle rays')
+    # 打乱光线
     np.random.shuffle(rays_rgb)
     print('done')
     i_batch = 0
-
+    # 最大迭代次数
     N_iters = 1000000
+    # 打印数据集划分
     print('Begin')
     print('TRAIN views are', i_train)
     print('TEST views are', i_test)
@@ -440,25 +456,30 @@ def train():
         batch_obj = None
 
         # Random over all images
+        # 如果不使用物体信息
         if not args.use_object_properties:
             # No object specific representations
+            
             batch = rays_rgb[i_batch:i_batch+N_rand]  # [B, 2+1, 3*?]
             batch = tf.transpose(batch, [1, 0, 2])
 
             # batch_rays[i, n, xyz] = ray origin or direction, example_id, 3D position
             # target_s[n, rgb] = example_id, observed color.
+            # 光线、rgb
             batch_rays, target_s = batch[:2], batch[2]
 
             i_batch += N_rand
+            # ibatch超界了，打乱并重新将迭代次数置0
             if i_batch >= rays_rgb.shape[0]:
                 np.random.shuffle(rays_rgb)
                 i_batch = 0
-
+        # 使用obj信息时
         batch = rays_rgb[i_batch:i_batch + N_rand]  # [B, 2+1+max_obj, 3*?]
         batch = tf.transpose(batch, [1, 0, 2])
 
         # batch_rays[i, n, xyz] = ray origin or direction, example_id, 3D position
         # target_s[n, rgb] = example_id, observed color.
+        # ray信息、rgb、动态obj的信息
         batch_rays, target_s, batch_dyn = batch[:2], batch[2], batch[3:]
 
         if args.use_time:

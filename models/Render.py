@@ -224,27 +224,6 @@ def render_rays(ray_batch,
             pts = rays_o[..., None, :] + rays_d[..., None, :] * \
                 z_vals[..., :, None]  # [N_rays, N_samples, 3]
 
-    ####### DEBUG Sampling Points
-    # print('TURN OFF IF NOT DEBUGING!')
-    # axes_ls = plt.figure(1).axes
-    # for i in range(rays_o.shape[0]):
-    #     plt.arrow(np.array(rays_o)[i, 0], np.array(rays_o)[i, 2],
-    #               np.array(30 * rays_d)[i, 0],
-    #               np.array(30 * rays_d)[i, 2], color='red')
-    #
-    # plt.sca(axes_ls[1])
-    # for i in range(rays_o.shape[0]):
-    #     plt.arrow(np.array(rays_o)[i, 2], np.array(rays_o)[i, 1],
-    #               np.array(30 * rays_d)[i, 2],
-    #               np.array(30 * rays_d)[i, 1], color='red')
-    #
-    # plt.sca(axes_ls[2])
-    # for i in range(rays_o.shape[0]):
-    #     plt.arrow(np.array(rays_o)[i, 0], np.array(rays_o)[i, 1],
-    #               np.array(30 * rays_d)[i, 0],
-    #               np.array(30 * rays_d)[i, 1], color='red')
-    ####### DEBUG Sampling Points
-
     # Choose input options
     if not N_obj:
         # No objects
@@ -328,19 +307,6 @@ def render_rays(ray_batch,
 
                 z_vals_obj_w = tf.norm(pts_box_samples_w - tf.gather_nd(rays_o, intersection_map[:, 0, tf.newaxis])[:, tf.newaxis, :], axis=-1)
 
-                # else:
-                #     z_vals_obj_w = z_vals_in_w[:, tf.newaxis]
-                #     pts_box_samples_o = pts_box_o[:, tf.newaxis, :]
-                #     pts_box_samples_w = pts_box_w[:, tf.newaxis, :]
-
-                #####
-                # print('TURN OFF IF NOT DEBUGING!')
-                # axes_ls = plt.figure(1).axes
-                # plt.sca(axes_ls[0])
-                #
-                # pts = np.reshape(pts_box_samples_w, [-1, 3])
-                # plt.scatter(pts[:, 0], pts[:, 2], color='red')
-                ####
 
                 # Extract objects
                 obj_ids = obj_pose[..., 4]

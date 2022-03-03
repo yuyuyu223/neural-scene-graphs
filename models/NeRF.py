@@ -67,6 +67,7 @@ def create_nerf(args):
             args.multires_obj, -1 if args.multires_obj == -1 else args.i_embed, input_dims=3)
 
         # Version a: One Network per object
+        # 每个物体一个模型
         if args.latent_size < 1:
             # xyz编码维度
             input_ch = input_ch
@@ -79,7 +80,7 @@ def create_nerf(args):
             # TODO: Change to number of objects in Frames
             # 遍历场景下的所有物体
             for object_i in args.scene_objects:
-                # 定义模型名称
+                # 定义obj模型名称
                 model_name = 'model_obj_' + str(int(object_i)) # .zfill(5)
                 # input: xyz
                 # input_ch_color_head: viewdirs+obj_pos
@@ -88,22 +89,30 @@ def create_nerf(args):
                     input_ch=input_ch, output_ch=output_ch, skips=skips,
                     input_ch_color_head=input_ch_color_head, use_viewdirs=args.use_viewdirs,trainable=trainable)
                     # latent_size=args.latent_size)
-
+                # 添加训练参数
                 grad_vars += model_obj.trainable_variables
+                # 添加到模型列表
                 models[model_name] = model_obj
+                # 添加到动态模型列表
                 models_dynamic_dict[model_name] = model_obj
 
         # Version b: One Network for all similar objects of the same class
+        # 每类物体一个模型
         else:
+            # xyz编码 + latentcode(类的潜在编码)
             input_ch = input_ch + args.latent_size
+            # viewdirs编码
             input_ch_color_head = input_ch_views
             # Don't add object location input for setting 1
+            # 添加物体位置编码 # viewdirs编码+obj_pos编码
             if args.object_setting != 1:
                 input_ch_color_head += input_ch_obj
-
+            # 遍历场景中所有物体类
             for obj_class in args.scene_classes:
+                # 模型名称
                 model_name = 'model_class_' + str(int(obj_class)).zfill(5)
-
+                # input_ch：xyz编码 + latentcode
+                # input_ch_color_head: viewdirs编码+obj_pos编码
                 model_obj = init_nerf_model(
                     D=args.netdepth_fine, W=args.netwidth_fine,
                     input_ch=input_ch, output_ch=output_ch, skips=skips,
@@ -112,16 +121,21 @@ def create_nerf(args):
                     use_viewdirs=args.use_viewdirs, trainable=trainable)
                     # use_shadows=args.use_shadows,
                     # latent_size=args.latent_size)
-
+                # 添加训练参数
                 grad_vars += model_obj.trainable_variables
+                # 添加到模型列表
                 models[model_name] = model_obj
+                # 添加到动态模型列表
                 models_dynamic_dict[model_name] = model_obj
-
+            # 遍历场景中所有的物体
             for object_i in args.scene_objects:
+                # latent_vector名称
                 name = 'latent_vector_obj_'+str(int(object_i)).zfill(5)
+                # 初始化物体的latent_vector
                 latent_vector_obj = init_latent_vector(args.latent_size, name)
+                # 把物体的latent_vector也放到可训练的参数
                 grad_vars.append(latent_vector_obj)
-
+                # 保存下来
                 latent_encodings[name] = latent_vector_obj
                 latent_vector_dict[name] = latent_vector_obj
 
@@ -132,7 +146,7 @@ def create_nerf(args):
         embeddirs_fn=embeddirs_fn,
         embedobj_fn=embedobj_fn,
         netchunk=args.netchunk)
-
+    # 训练参数
     render_kwargs_train = {
         'network_query_fn': network_query_fn,
         'perturb': args.perturb,
@@ -153,7 +167,7 @@ def create_nerf(args):
         'use_time': args.use_time,
         'obj_location': False if args.object_setting == 1 else True,
     }
-
+    # 测试参数
     render_kwargs_test = {
         k: render_kwargs_train[k] for k in render_kwargs_train}
     render_kwargs_test['perturb'] = False
@@ -164,17 +178,23 @@ def create_nerf(args):
     basedir = args.basedir
     expname = args.expname
     weights_path = None
-
+    # 如果有预训练模型
     if args.ft_path is not None and args.ft_path != 'None':
         ckpts = [args.ft_path]
+    # 模型库
     elif args.model_library is not None and args.model_library != 'None':
+        # 物体模型
         obj_ckpts = {}
+        # 背景模型
         ckpts = []
+        # 遍历模型库
         for f in sorted(os.listdir(args.model_library)):
+            # 分开保存
             if 'model_' in f and 'fine' not in f and 'optimizer' not in f and 'obj' not in f:
                 ckpts.append(os.path.join(args.model_library, f))
             if 'obj' in f and float(f[10:][:-11]) in args.scene_objects:
                 obj_ckpts[f[:-11]] = (os.path.join(args.model_library, f))
+    # 只训练物体
     elif args.obj_only:
         ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if
                  ('_obj_' in f)]
@@ -182,13 +202,16 @@ def create_nerf(args):
         ckpts = [os.path.join(basedir, expname, f) for f in sorted(os.listdir(os.path.join(basedir, expname))) if
                  ('model_' in f and 'fine' not in f and 'optimizer' not in f and 'obj' not in f and 'class' not in f)]
     print('Found ckpts', ckpts)
+    # 需要加载预训练模型
     if len(ckpts) > 0 and not args.no_reload and (not args.obj_only or args.model_library):
+        # reload
         ft_weights = ckpts[-1]
         print('Reloading from', ft_weights)
         model.set_weights(np.load(ft_weights, allow_pickle=True))
+        # 获取开始轮数
         start = int(ft_weights[-10:-4]) + 1
         print('Resetting step to', start)
-
+        # reload model_fine
         if model_fine is not None:
             ft_weights_fine = '{}_fine_{}'.format(
                 ft_weights[:-11], ft_weights[-10:])
@@ -220,7 +243,7 @@ def create_nerf(args):
             ft_weights_obj = os.path.join(ft_weights_obj_dir, model_dyn_name + '_{}'.format(ft_weights[-10:]))
             print('Reloading model from', ft_weights_obj, 'for', model_dyn_name[6:])
             model_dyn.set_weights(np.load(ft_weights_obj, allow_pickle=True))
-
+        # 加载obj的latentcode
         if latent_vector_dict is not None:
             for latent_vector_name, latent_vector in latent_vector_dict.items():
                 ft_weights_obj = os.path.join(ft_weights_obj_dir, latent_vector_name + '_{}'.format(ft_weights[-10:]))
@@ -231,29 +254,35 @@ def create_nerf(args):
 
     if args.model_library:
         start = 0
-
+    # 训练参数、测试参数、开始轮数、可训练模型参数、模型、obj的latentcode，权重路径
     return render_kwargs_train, render_kwargs_test, start, grad_vars, models, latent_encodings, weights_path
 
 
 def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, embedobj_fn, netchunk=1024*64):
     """Prepares inputs and applies network 'fn'."""
+    # 取出xyz
     inputs_flat = tf.reshape(inputs[..., :3], [-1, 3])
-
+    # xyz编码
     embedded = embed_fn(inputs_flat)
+    # 如果inputsize大于3
     if inputs.shape[-1] > 3:
         if inputs.shape[-1] == 4:
             # NeRF + T w/o embedding
+            # xyz+time编码
             time_st = tf.reshape(inputs[..., 3], [inputs_flat.shape[0], -1])
             embedded = tf.concat([embedded, time_st], -1)
         else:
             # NeRF + Latent Code
+            # xyz编码 + latentcode
             inputs_latent = tf.reshape(inputs[..., 3:], [inputs_flat.shape[0], -1])
             embedded = tf.concat([embedded, inputs_latent], -1)
-
+    # 使用viewdirs
     if viewdirs is not None:
         input_dirs = tf.broadcast_to(viewdirs[:, None, :3], inputs[..., :3].shape)
         input_dirs_flat = tf.reshape(input_dirs, [-1, input_dirs.shape[-1]])
+        # viewdirs编码
         embedded_dirs = embeddirs_fn(input_dirs_flat)
+        # viewdirs编码 + xyz编码 + latentcode
         embedded = tf.concat([embedded, embedded_dirs], -1)
 
         if viewdirs.shape[-1] > 3:
@@ -262,8 +291,9 @@ def run_network(inputs, viewdirs, fn, embed_fn, embeddirs_fn, embedobj_fn, netch
                                              shape=[inputs[..., :3].shape[0], inputs[..., :3].shape[1], 3])
             input_obj_pose_flat = tf.reshape(input_obj_pose, [-1, input_obj_pose.shape[-1]])
             embedded_obj = embedobj_fn(input_obj_pose_flat)
+            # viewdirs编码 + xyz编码 + latentcode编码 + obj_pos编码
             embedded = tf.concat([embedded, embedded_obj], -1)
-
+    # fn: model
     outputs_flat = batchify(fn, netchunk)(embedded)
     outputs = tf.reshape(outputs_flat, list(
         inputs.shape[:-1]) + [outputs_flat.shape[-1]])
